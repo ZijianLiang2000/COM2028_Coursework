@@ -119,3 +119,4 @@ reshapeArrayImage(x_test)
 
 # Now shape of x_train is (500, 400, 600)
 # shape of x_test is(300, 400, 600)
+
