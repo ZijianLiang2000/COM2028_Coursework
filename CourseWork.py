@@ -1,10 +1,14 @@
 import glob
 import re
-
+import time
 import numpy as np
 import tensorflow as tf
 from PIL import Image
 from matplotlib import image
+
+# Print time for start execution of code
+startTime = time.perf_counter()
+print("Start execution time:", startTime)
 
 # Initialize arrays
 readLine = []
@@ -102,8 +106,11 @@ openY_Train("train.txt")
 loadY_Train()
 
 # Resize x_train and x_test images into unified size and save into array, with range of images constrained
-resizeImagesAndSave(x_train_images, x_train, 5)
-resizeImagesAndSave(x_test_images, x_test, 3)
+x_train_image_range = 500
+x_test_image_range = 300
+
+resizeImagesAndSave(x_train_images, x_train, x_train_image_range)
+resizeImagesAndSave(x_test_images, x_test, x_test_image_range)
 
 # They needed to be normalized within 255
 x_train = np.array(x_train) / 255
@@ -114,9 +121,13 @@ x_train = rgb2gray(np.array(x_train))
 x_test = rgb2gray(np.array(x_test))
 
 # Reshape x_train and x_test images into -1,400,600,1
+# Now shape of x_train is (500, 400, 600)
+# shape of x_test is(300, 400, 600)
 reshapeArrayImage(x_train)
 reshapeArrayImage(x_test)
 
-# Now shape of x_train is (500, 400, 600)
-# shape of x_test is(300, 400, 600)
-
+# Print time for start execution of code
+endTime = time.perf_counter()
+print("End execution time of code:", endTime)
+print("Total time duration of code:", endTime - startTime, "seconds processing", x_train_image_range,
+      "images from x_train, the corresponding y_train and", x_test_image_range, "images from x_test.")
