@@ -11,6 +11,8 @@ pillow = "*"
 matplotlib = "*"
 pandas = "*"
 opencv-python = "*"
+scikit-image = "*"
+scikit-learn = "*"
 
 [dev-packages]
 
