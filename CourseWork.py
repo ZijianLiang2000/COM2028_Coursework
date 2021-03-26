@@ -14,6 +14,7 @@ from keras_preprocessing.image import ImageDataGenerator
 from matplotlib import image
 from keras.models import Sequential
 from keras.layers import Dense, Conv2D, Flatten, MaxPooling2D, Dropout, Activation, BatchNormalization
+from keras.regularizers import l2
 import os
 # Print time for start execution of code
 from tensorflow.python.keras.utils.np_utils import to_categorical
@@ -169,6 +170,9 @@ resizeImagesAndSave(x_train_images, x_train, x_train_image_range_from, x_train_i
 print("Processing array x_test to store images")
 resizeImagesAndSave(x_test_images, x_test, x_test_image_range_from, x_test_image_range_to)
 
+image = Image.fromarray(x_train[0])
+image.show()
+
 # X_train and x_validation spreaded as 8216 and 2054
 # X_train, X_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.2, random_state=13)
 #
@@ -258,7 +262,7 @@ model = Sequential()
 # 2nd model
 input_shape=(32, 48, 3)
 cnn4 = Sequential()
-cnn4.add(Conv2D(32, kernel_size=(3, 3), activation='relu', input_shape=input_shape))
+cnn4.add(Conv2D(32, kernel_size=(3, 3), activation='relu', input_shape=input_shape, kernel_regularizer=l2(0.0005), bias_regularizer=l2(0.01)))
 cnn4.add(BatchNormalization())
 
 cnn4.add(Conv2D(32, kernel_size=(3, 3), activation='relu'))
@@ -288,8 +292,9 @@ cnn4.add(Dropout(0.5))
 # size of output layer should be 3 classes
 cnn4.add(Dense(23, activation="softmax"))
 
+opt = keras.optimizers.Adam(learning_rate=0.01)
 cnn4.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
-cnn4.fit(x_train,y_train, validation_split=0.3, epochs=50, batch_size=128, shuffle=True)
+cnn4.fit(x_train,y_train, validation_split=0.3, epochs=25, batch_size=128, shuffle=True)
 model.save("my_model_butterfly_cnn4")
 # Third model (lower accuracy)
 # cnn = Sequential()
