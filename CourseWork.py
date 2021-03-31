@@ -1,27 +1,38 @@
 import random
 import cv2
-import keras
+import pandas
+from keras.models import load_model
+from tensorflow import keras
 import glob
 import re
 import time
-
+from keras.applications import vgg16 as vgg16
 import numpy
 import numpy as np
+from skimage import transform
 import tensorflow as tf
 from PIL import Image
-from keras import models, layers
+from keras import models, layers, applications
 from keras_preprocessing.image import ImageDataGenerator
 from matplotlib import image
-from keras.models import Sequential
-from keras.layers import Dense, Conv2D, Flatten, MaxPooling2D, Dropout, Activation, BatchNormalization
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Conv2D, Flatten, MaxPooling2D, Dropout, Activation, BatchNormalization, experimental, \
+    AveragePooling2D
+from kerastuner.tuners import RandomSearch
 from keras.regularizers import l2
 import os
 # Print time for start execution of code
+from skimage.transform import resize
+from sklearn.preprocessing import StandardScaler
 from tensorflow.python.keras.utils.np_utils import to_categorical
 from sklearn.model_selection import train_test_split
 
 startTime = time.perf_counter()
 print("Start execution time:", startTime)
+
+# X_TRAIN_IMG_ARRAY_LENGTH = 10270
+
+X_TEST_IMG_ARRAY_LENGTH = 10
 
 # Initialize arrays
 readLine = []
@@ -31,40 +42,56 @@ y_train = []
 x_train = []
 x_test = []
 
+# x_train = np.empty((X_TRAIN_IMG_ARRAY_LENGTH, 200, 200, 3), dtype=np.float32)
+x_test = np.empty((X_TEST_IMG_ARRAY_LENGTH, 200, 200, 3), dtype=np.float32)
 print("GPU number available:", len(tf.config.experimental.list_physical_devices("GPU")))
 
-# def storeX_TrainWithLabels(x_trainArray, y_trainArray, x_validArray, y_validArray, trainPath, validPath):
-#     print("Storing image and labels")
-#     for length in range(len(x_trainArray)):
-#         for y_range in range(23):
-#             if int(y_trainArray[length]) == y_range:
-#                 img = Image.fromarray(x_trainArray[length])
-#                 createLabelFolders(str(trainPath) + str(y_range))
-#                 if os.path.isfile(str(trainPath) + str(y_range) + "/" + str(length) + ".jpg"):
-#                     print("File already exists, jump to next file")
-#                 else:
-#                     img.save(str(trainPath) + str(
-#                         y_range) + "/" + str(length) + ".jpg")
-#     for length in range(len(x_validArray)):
-#         for y_range in range(23):
-#             if int(y_validArray[length]) == y_range:
-#                 img = Image.fromarray(x_validArray[length])
-#                 createLabelFolders(str(validPath) + str(y_range))
-#                 if os.path.isfile(str(validPath) + str(y_range) + "/" + str(length) + ".jpg"):
-#                     print("File already exists, jump to next file")
-#                 else:
-#                     img.save(str(trainPath) + str(
-#                         y_range) + "/" + str(length) + ".jpg")
-#     print("Finished")
+
+def storeX_TrainWithLabels(x_trainArray, y_trainArray, x_validArray, y_validArray, trainPath, validPath):
+    print("Storing image and labels")
+    for length in range(len(x_trainArray)):
+        for y_range in range(23):
+            if int(y_trainArray[length]) == y_range:
+                img = Image.fromarray(x_trainArray[length])
+                createLabelFolders(str(trainPath) + str(y_range))
+                if os.path.isfile(str(trainPath) + str(y_range) + "/" + str(length) + ".jpg"):
+                    print("File already exists, jump to next file")
+                else:
+                    img.save(str(trainPath) + str(
+                        y_range) + "/" + str(length) + ".jpg")
+    for length in range(len(x_validArray)):
+        for y_range in range(23):
+            if int(y_validArray[length]) == y_range:
+                img = Image.fromarray(x_validArray[length])
+                createLabelFolders(str(validPath) + str(y_range))
+                if os.path.isfile(str(validPath) + str(y_range) + "/" + str(length) + ".jpg"):
+                    print("File already exists, jump to next file")
+                else:
+                    img.save(str(trainPath) + str(
+                        y_range) + "/" + str(length) + ".jpg")
+    print("Finished")
+
+def storeX_TrainWithLabelsForX_Test(x_testArray, testPath):
+    print("Storing image and labels")
+    for length in range(len(x_testArray)):
+        img = Image.fromarray(x_testArray[length])
+        createLabelFolders(str(testPath))
+        if os.path.isfile(str(testPath)+"/" + str(length) + ".jpg"):
+            print("File already exists, jump to next file")
+        else:
+            img.save(str(testPath)
+            +"/" + str(length) + ".jpg")
+
+    print("Finished")
 
 
-# def createLabelFolders(path):
-#     try:
-#         os.mkdir(path)
-#     except OSError:
-#         print("Directory already created", path)
-#     else:
-#         print("Successfully created the directory %s ", path)
+def createLabelFolders(path):
+    try:
+        os.mkdir(path)
+    except OSError:
+        print("Directory already created", path)
+    else:
+        print("Successfully created the directory %s ", path)
 
 
 def displayImage(singleImage):
@@ -121,20 +148,22 @@ def resizeImagesAndSave(imgArray, arrayToSave, imageRangeFrom, imageRangeTo):
     # for singleImage in range(len(images)):
     print("Processing array to store images")
 
-    scale_percent = 8  # percent of original size
+    scale_percent = 100  # percent of original size
 
     for singleImage in range(imageRangeFrom, imageRangeTo):
         print("Currently processing the", singleImage, "image")
 
         # All images should be cropped to this size
-        cropImage = np.resize(image.imread(imgArray[singleImage]), (400, 600, 3))
+        cropImage = resize(image.imread(imgArray[singleImage]), (200, 200, 3), preserve_range=True)
 
         width = int(cropImage.shape[1] * scale_percent / 100)
         height = int(cropImage.shape[0] * scale_percent / 100)
         dim = (width, height)
         resized = cv2.resize(cropImage, dim, interpolation=cv2.INTER_AREA)
         # Saved to specific array parameter
-        arrayToSave.append(resized)
+        resized /= 255
+        resized = resize(resized,(-1,1200))
+        arrayToSave[singleImage] = resized
         # print("Image shape after crop:", np.array(cropImage).size)
     print("Process finished for array to store images")
 
@@ -154,6 +183,8 @@ openY_Train("train.txt")
 # y_train is ranged from 0 to 22
 loadY_Train()
 
+
+
 # Resize x_train and x_test images into unified size and save into array, with range of images constrained
 # x_train_image_range should be max 10270
 # x_test_image_range should be max 15009
@@ -161,22 +192,23 @@ loadY_Train()
 x_train_image_range_from = 0
 #  range(i, j) produces i, i+1, i+2, ..., j-1.
 # So if range(0,500), meaning index [0 - 499], selects image 0 - 500
-x_train_image_range_to = 10270
+# x_train_image_range_to = X_TRAIN_IMG_ARRAY_LENGTH
 x_test_image_range_from = 0
-x_test_image_range_to = 6
+x_test_image_range_to = X_TEST_IMG_ARRAY_LENGTH
 
-print("Processing array x_train to store images")
-resizeImagesAndSave(x_train_images, x_train, x_train_image_range_from, x_train_image_range_to)
+# print("Processing y_train to constraint range")
+# y_train = y_train[x_train_image_range_from:x_train_image_range_to]
+
+# print("Processing array x_train to store images")
+# resizeImagesAndSave(x_train_images, x_train, x_train_image_range_from, x_train_image_range_to)
 print("Processing array x_test to store images")
-resizeImagesAndSave(x_test_images, x_test, x_test_image_range_from, x_test_image_range_to)
+resizeImagesAndSave(x_test_images, x_test, 0, X_TEST_IMG_ARRAY_LENGTH)
 
-image = Image.fromarray(x_train[0])
-image.show()
+print("Size of resized img: ")
+# resize x_test_data back into (15009,200,200,3)
 
-# X_train and x_validation spreaded as 8216 and 2054
-# X_train, X_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.2, random_state=13)
 #
-# storeX_TrainWithLabels(X_train,y_train, X_val, y_val,"E:/360MoveData/Users/11047/Desktop/Aritificial Intelligence/Coursework/data_split/train/", "E:/360MoveData/Users/11047/Desktop/Aritificial Intelligence/Coursework/data_split/validation/")
+# storeX_TrainWithLabelsForX_Test(x_test,"E:/360MoveData/Users/11047/Desktop/Aritificial Intelligence/Coursework/test1/")
 #
 # train_datagen = ImageDataGenerator(
 #     rotation_range=40,
@@ -204,10 +236,10 @@ image.show()
 
 # They needed to be normalized within 255
 print("Normalising x_train")
-x_train = np.array(x_train) / 255
+# x_train = np.array(x_train) / 255
 print("Normalising x_test")
-x_test = np.array(x_test) / 255
-print("Done")
+# x_test = np.array(x_test) / 255
+# print("Done")
 
 # Convert x_train and x_test into greyscale img with shape (numIMG,400,600)
 # print("Converting x_train into grayscale")
@@ -219,11 +251,11 @@ print("Done")
 # Now shape of x_train is (500, 400, 600)
 # shape of x_test is(300, 400, 600)
 print("Reshaping x_train1")
-x_train = np.array(x_train).reshape(-1, 32, 48, 3)
+# x_train = np.array(x_train).reshape(-1, 200, 200, 3)
 print("Reshaping x_test")
-x_test = np.array(x_test).reshape(-1, 32, 48, 3)
+# x_test = np.array(x_test).reshape(-1, 200, 200, 3)
 
-print(np.array(x_train).shape)
+# print(np.array(x_train).shape)
 
 # Turn y_train to be categorical
 # y_train will be 1 value initially, either class 0,1,2 ... 22 with shape (10270,)
@@ -232,70 +264,98 @@ print("y_train being processed to be categorical")
 y_train = to_categorical(y_train, 23)
 print("Categorical process finished")
 #
-print("Processing y_train to constraint range")
-y_train = y_train[x_train_image_range_from:x_train_image_range_to]
+
 print("Finished processing y_train to constraint range")
 
 # Keras Model Part
 print("Building model...")
 
-model = Sequential()
+VGG = vgg16.VGG16(input_shape=(200, 200, 3), include_top=False, weights="imagenet",classes=23)
+VGG.trainable = False
+model = keras.Sequential([
+    VGG,
+    keras.layers.Flatten(),
+    keras.layers.Dense(units=512, activation="relu"),
+    keras.layers.Dense(units=256, activation="relu"),
+    keras.layers.Dense(units=23, activation="softmax")
+])
 
-# print("X_train model size", np.array(X_train).shape)
-# print("X_valid model size",np.array(X_val).shape)
+print("Predicting model")
 
-# 1st model
-# # Model Conventional2D kernel should be a batch size of 64, with input shape of 400*600*1
-# model.add(Conv2D(64, kernel_size=(3, 3), activation="relu", input_shape=(32, 48, 3), strides=(1, 1)))
-# model.add(MaxPooling2D(pool_size=(2,2)))
-# model.add(Dropout(0.25))
-# model.add(Conv2D(64, kernel_size=(3, 3), activation="relu", strides=(1, 1), padding='valid'))
-# model.add(MaxPooling2D(pool_size=(2,2)))
+# model.compile(optimizer="adam", loss=keras.losses.categorical_crossentropy, metrics=["accuracy"])
+# model.fit(x_train, y_train, validation_split=0.3, epochs=6, batch_size=32,  shuffle=True)
+
+# model.save("my_model_butterfly_VGG16_NoScaler")
+
+model1 = load_model("my_model_butterfly_VGG16")
+y_pred = model1.predict(x_test)
+y_pred = np.argmax(y_pred,axis=1)
+
+# lengthArray = []
+# for i in range(X_TEST_IMG_ARRAY_LENGTH):
+#     lengthArray.append(i)
+
+
+df = pandas.DataFrame({"label": y_pred})
+df.to_csv("submission4.csv", index=False)
 #
-# model.add(Conv2D(64, kernel_size=(3, 3), activation="relu", strides=(1, 1), padding='valid'))
-# model.add(MaxPooling2D(pool_size=(2,2)))
+# input_shape = (80, 80, 3)
+# cnn4 = Sequential()
+# cnn4.add(AveragePooling2D(6, 3, input_shape=input_shape))
+# cnn4.add(Conv2D(64, 3, activation='relu'))
+# # cnn4.add(data_augmentation)
+# cnn4.add(Conv2D(32, 3, activation='relu'))
+# cnn4.add(MaxPooling2D(2, 2))
+# # cnn4.add(Dropout(0.5))
+# # cnn4.add(BatchNormalization())
+# cnn4.add(Flatten())
+# cnn4.add(Dense(512, activation="relu"))
+# # size of output layer should be 3 classes
+# cnn4.add(Dense(23, activation="softmax"))
 #
-# model.add(Flatten())
-# model.add(Dense(64))
-# model.add(Activation("relu"))
+# opt = keras.optimizers.Adam(learning_rate=1e-3)
+# cnn4.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+# cnn4.fit(X_train, y_train, epochs=50, batch_size=128, validation_split=0.3, shuffle=True)
+# cnn4.save("my_model_butterfly_cnn4")
+#
+# cnn4.evaluate(X_val, y_val)
 
-# 2nd model
-input_shape=(32, 48, 3)
-cnn4 = Sequential()
-cnn4.add(Conv2D(32, kernel_size=(3, 3), activation='relu', input_shape=input_shape, kernel_regularizer=l2(0.0005), bias_regularizer=l2(0.01)))
-cnn4.add(BatchNormalization())
 
-cnn4.add(Conv2D(32, kernel_size=(3, 3), activation='relu'))
-cnn4.add(BatchNormalization())
-cnn4.add(MaxPooling2D(pool_size=(2, 2)))
-cnn4.add(Dropout(0.25))
+# def build_model(hp):
+#     model = Sequential()
+#     model.add(AveragePooling2D(6, 3, input_shape=input_shape))
+#     for i in range(hp.Int("Conv Layers",min_value=0,max_value=3)):
+#         model.add(Conv2D(hp.Choice(f"layer_{i}_filters",[16,32,64]), 3, activation='relu'))
+#     model.add(Conv2D(64, 3, activation='relu'))
+#     # cnn4.add(data_augmentation)
+#     model.add(Conv2D(32, 3, activation='relu'))
+#     # cnn4.add(data_augmentation)
+#     model.add(MaxPooling2D(2, 2))
+#     model.add(Dropout(0.5))
+#     # cnn4.add(BatchNormalization())
+#     model.add(Flatten())
+#     model.add(Dense(hp.Choice("Dense layer",[64,128,256,512,1024]), activation="relu"))
+#     # size of output layer should be 3 classes
+#     model.add(Dense(23, activation="softmax"))
+#
+#     opt1 = keras.optimizers.Adam(learning_rate=0.01)
+#     model.compile(loss='categorical_crossentropy', optimizer=opt1, metrics=['accuracy'])
+#     return model
+#
+#
+# tuner = RandomSearch(
+#     build_model,
+#     objective='val_accuracy',
+#     max_trials=32)
+#
+# tuner.search(X_train, y_train, validation_data=(X_val, y_val), epochs=50, batch_size=32)
+#
+# best_model = tuner.get_best_models()[0]
+# print("Evaluating best model:")
+# best_model.evaluate(X_val,y_val)
+# best_model.summary()
+# tuner.results_summary()
 
-cnn4.add(Conv2D(64, kernel_size=(3, 3), activation='relu'))
-cnn4.add(BatchNormalization())
-cnn4.add(Dropout(0.25))
-
-cnn4.add(Conv2D(128, kernel_size=(3, 3), activation='relu'))
-cnn4.add(BatchNormalization())
-cnn4.add(MaxPooling2D(pool_size=(2, 2)))
-cnn4.add(Dropout(0.25))
-
-cnn4.add(Flatten())
-
-cnn4.add(Dense(512, activation='relu'))
-cnn4.add(BatchNormalization())
-cnn4.add(Dropout(0.5))
-
-cnn4.add(Dense(128, activation='relu'))
-cnn4.add(BatchNormalization())
-cnn4.add(Dropout(0.5))
-
-# size of output layer should be 3 classes
-cnn4.add(Dense(23, activation="softmax"))
-
-opt = keras.optimizers.Adam(learning_rate=0.01)
-cnn4.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
-cnn4.fit(x_train,y_train, validation_split=0.3, epochs=25, batch_size=128, shuffle=True)
-model.save("my_model_butterfly_cnn4")
 # Third model (lower accuracy)
 # cnn = Sequential()
 # cnn.add(Conv2D(filters=32,
